@@ -6,6 +6,9 @@ project(
   LANGUAGES CXX
 )
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 if(NOT ${CPM_LOCAL_PACKAGE_PATHS} STREQUAL "")
    include(${CPM_LOCAL_PACKAGE_PATHS})
 endif()
@@ -18,6 +21,13 @@ include(FetchContent)
 
 FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
 FetchContent_MakeAvailable(json)
+
+FetchContent_Declare(
+	Jsonifier
+	GIT_REPOSITORY https://github.com/RealTimeChris/Jsonifier.git
+	GIT_TAG dev
+)
+FetchContent_MakeAvailable(Jsonifier)
 
 FetchContent_Declare(
   glaze
@@ -82,7 +92,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE include ${json_struct_SOURCE_
 
 find_package(Qt5 COMPONENTS Core)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json glaze::glaze daw::daw-json-link simdjson yyjson Boost::json)
+target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json glaze::glaze daw::daw-json-link simdjson yyjson Boost::json Jsonifier::Jsonifier)
 
 if (Qt5_FOUND)
   target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_QT=1)
