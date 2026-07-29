@@ -1,0 +1,185 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: clang
+            name: "Linux Clang"
+            branch_base: temp-benchmarking-ubuntu-clang
+            results_dir: Linux-Clang
+            commit_msg: "Updates - Linux-Clang"
+          - os: ubuntu-latest
+            compiler: gcc
+            name: "Linux GCC"
+            branch_base: temp-benchmarking-ubuntu-gcc
+            results_dir: Linux-GCC
+            commit_msg: "Updates - Linux-GCC"
+          - os: macos-latest
+            compiler: clang
+            name: "macOS Clang"
+            branch_base: temp-benchmarking-macos-clang
+            results_dir: macOS-Clang
+            commit_msg: "Updates - macOS-Clang"
+          - os: macos-latest
+            compiler: gcc
+            name: "macOS GCC"
+            branch_base: temp-benchmarking-macos-gcc
+            results_dir: macOS-GCC
+            commit_msg: "Updates - macOS-GCC"
+          - os: windows-latest
+            compiler: msvc
+            name: "Windows MSVC"
+            branch_base: temp-benchmarking-windows-msvc
+            results_dir: Windows-MSVC
+            commit_msg: "Updates - Windows-MSVC"
+
+    runs-on: ${{ matrix.os }}
+    name: Build on ${{ matrix.name }}
+
+    env:
+      RUN_TAG: ${{ github.run_id }}-${{ github.run_attempt }}
+      BRANCH_NAME: ${{ matrix.branch_base }}-${{ github.run_id }}-${{ github.run_attempt }}
+      RESULTS_PATH: ${{ github.workspace }}/results/${{ matrix.results_dir }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Clang (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.compiler == 'clang'
+        run: |
+          set -euo pipefail
+          CODENAME=$(lsb_release -cs)
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/llvm.asc >/dev/null
+          echo "deb http://apt.llvm.org/${CODENAME}/ llvm-toolchain-${CODENAME} main" | sudo tee /etc/apt/sources.list.d/llvm-snapshot.list
+          sudo apt-get update
+          DEV_VERSION=$(grep -h '^Package: clang-[0-9]*$' /var/lib/apt/lists/apt.llvm.org_*_Packages | grep -oP 'clang-\K[0-9]+' | sort -nu | tail -1)
+          [ -n "$DEV_VERSION" ] || { echo "no clang in llvm apt lists"; exit 1; }
+          sudo apt-get install -y clang-$DEV_VERSION lld-$DEV_VERSION
+          test -x /usr/bin/clang++-$DEV_VERSION
+          echo "CXX_BIN=/usr/bin/clang++-$DEV_VERSION" >> $GITHUB_ENV
+          echo "C_BIN=/usr/bin/clang-$DEV_VERSION" >> $GITHUB_ENV
+
+      - name: Setup GCC (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.compiler == 'gcc'
+        run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          sudo apt-get update
+          DEV_VERSION=$(apt-cache search '^g\+\+-[0-9]+$' | awk '{print $1}' | sort -V | tail -n 1 | sed 's/g++-//')
+          sudo apt-get install -y gcc-$DEV_VERSION g++-$DEV_VERSION
+          echo "CXX_BIN=/usr/bin/g++-$DEV_VERSION" >> $GITHUB_ENV
+          echo "C_BIN=/usr/bin/gcc-$DEV_VERSION" >> $GITHUB_ENV
+
+      - name: Setup mold (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.compiler == 'gcc'
+        uses: rui314/setup-mold@v1
+
+      - name: Use mold (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.compiler == 'gcc'
+        run: echo "LINKER_ARGS=-DCMAKE_LINKER_TYPE=MOLD" >> $GITHUB_ENV
+
+      - name: Setup Clang (macOS)
+        if: matrix.os == 'macos-latest' && matrix.compiler == 'clang'
+        run: |
+          brew install llvm
+          echo "CXX_BIN=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
+          echo "C_BIN=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
+
+      - name: Setup GCC (macOS)
+        if: matrix.os == 'macos-latest' && matrix.compiler == 'gcc'
+        run: |
+          brew install gcc
+          GCC_VERSION=$(brew list --versions gcc | awk '{print $2}' | cut -d. -f1)
+          echo "CXX_BIN=g++-$GCC_VERSION" >> $GITHUB_ENV
+          echo "C_BIN=gcc-$GCC_VERSION" >> $GITHUB_ENV
+
+      - name: Setup MSVC (Windows)
+        if: matrix.compiler == 'msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure CMake (Unix)
+        if: matrix.compiler != 'msvc'
+        run: cmake -S . -B ./Build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=${{ env.CXX_BIN }} -DCMAKE_C_COMPILER=${{ env.C_BIN }} ${{ env.LINKER_ARGS }}
+
+      - name: Configure CMake (Windows)
+        if: matrix.compiler == 'msvc'
+        run: cmake -S . -B ./Build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        working-directory: ./Build
+        run: cmake --build . --config=Release -v
+
+      - name: Run (Unix)
+        if: matrix.compiler != 'msvc'
+        shell: bash
+        run: |
+          mkdir -p "$RESULTS_PATH"
+          cd "$RESULTS_PATH"
+          "${{ github.workspace }}/Build/json_performance" | tee output.txt
+        continue-on-error: true
+
+      - name: Run (Windows)
+        if: matrix.compiler == 'msvc'
+        shell: bash
+        run: |
+          mkdir -p "$RESULTS_PATH"
+          cd "$RESULTS_PATH"
+          "${{ github.workspace }}/Build/Release/json_performance.exe" | tee output.txt
+        continue-on-error: true
+
+      - name: Commit and push to temp branch
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          git config --global user.email "40668522+RealTimeChris@users.noreply.github.com"
+          git config --global user.name "RealTimeChris"
+          git checkout -b "$BRANCH_NAME"
+          git add -f results
+          git commit -m "${{ matrix.commit_msg }}"
+          git push -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git "$BRANCH_NAME"
+
+  Merge-Branches:
+    runs-on: ubuntu-latest
+    needs: build
+
+    env:
+      RUN_TAG: ${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Merge all temporary branches into the benchmarking branch
+        run: |
+          git config --global user.email "40668522+RealTimeChris@users.noreply.github.com"
+          git config --global user.name "RealTimeChris"
+          git fetch origin
+          git checkout ${{ github.sha }}
+          git merge origin/temp-benchmarking-windows-msvc-$RUN_TAG --no-ff --no-edit
+          git merge origin/temp-benchmarking-ubuntu-gcc-$RUN_TAG --no-ff --no-edit
+          git merge origin/temp-benchmarking-ubuntu-clang-$RUN_TAG --no-ff --no-edit
+          git merge origin/temp-benchmarking-macos-gcc-$RUN_TAG --no-ff --no-edit
+          git merge origin/temp-benchmarking-macos-clang-$RUN_TAG --no-ff --no-edit
+          git checkout --orphan newBranch
+          git add -f results
+          git commit -m "First commit."
+          git branch -m benchmarking-$RUN_TAG
+          git push origin benchmarking-$RUN_TAG -f
+
+      - name: Delete temporary branches
+        if: always()
+        run: |
+          for suffix in temp-benchmarking-windows-msvc temp-benchmarking-ubuntu-gcc temp-benchmarking-ubuntu-clang temp-benchmarking-macos-gcc temp-benchmarking-macos-clang; do
+            git push origin --delete $suffix-$RUN_TAG || true
+          done
