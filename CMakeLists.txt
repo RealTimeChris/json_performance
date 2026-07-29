@@ -32,13 +32,12 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glaze)
 
 FetchContent_Declare(
-        rapidjson
-        URL https://github.com/Tencent/rapidjson/archive/refs/tags/v1.1.0.tar.gz
+  jsonifier
+  GIT_REPOSITORY https://github.com/realtimechris/jsonifier.git
+  GIT_TAG main
+  GIT_SHALLOW TRUE
 )
-FetchContent_GetProperties(rapidjson)
-if(NOT rapidjson_POPULATED)
-    FetchContent_Populate(rapidjson)
-endif()
+FetchContent_MakeAvailable(jsonifier)
 
 FetchContent_Declare(
   daw_json_link
@@ -102,11 +101,11 @@ FetchContent_MakeAvailable(boost)
 
 add_executable(${PROJECT_NAME} src/main.cpp)
 
-target_include_directories(${PROJECT_NAME} PRIVATE include ${json_struct_SOURCE_DIR}/include ${rapidjson_SOURCE_DIR}/include ${reflect_cpp_SOURCE_DIR}/include)
+target_include_directories(${PROJECT_NAME} PRIVATE include ${json_struct_SOURCE_DIR}/include ${reflect_cpp_SOURCE_DIR}/include)
 
 find_package(Qt5 COMPONENTS Core)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json glaze::glaze daw::daw-json-link simdjson yyjson fmt::fmt Boost::json reflectcpp)
+target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json glaze::glaze daw::daw-json-link simdjson yyjson fmt::fmt Boost::json reflectcpp Jsonifier::Jsonifier)
 
 if (Qt5_FOUND)
   target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_QT=1)
@@ -118,6 +117,6 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-  target_compile_options(${PROJECT_NAME} PRIVATE /W4)
+  target_compile_options(${PROJECT_NAME} PRIVATE /W4 /bigobj)
 endif()
 
