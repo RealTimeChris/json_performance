@@ -1,0 +1,39 @@
+Glaze json roundtrip: 1.72038 s
+Glaze json byte length: 670
+Glaze json write: 0.961667 s, 664.431 MB/s
+Glaze json read: 0.749117 s, 852.953 MB/s
+
+Glaze binary roundtrip: 0.735075 s
+Glaze binary byte length: 611
+Glaze binary write: 0.405071 s, 1438.5 MB/s
+Glaze binary read: 0.308972 s, 1885.92 MB/s
+
+---
+
+jsonifier json roundtrip: 1.34221 s
+jsonifier json byte length: 671
+jsonifier json write: 0.635636 s, 1005.23 MB/s
+jsonifier json read: 0.608937 s, 1049.31 MB/s
+
+---
+
+simdjson (on demand) json byte length: 671
+simdjson (on demand) json read: 0.783497 s, 815.526 MB/s
+
+---
+
+Glaze json byte length: 101297
+Glaze json read: 1.23218 s, 784.009 MB/s
+
+---
+
+jsonifier json byte length: 101297
+jsonifier json read: 2.13588 s, 452.294 MB/s
+
+---
+
+simdjson (on demand) json byte length: 101297
+simdjson (on demand) json read: 9.70909 s, 99.4989 MB/s
+
+---
+
